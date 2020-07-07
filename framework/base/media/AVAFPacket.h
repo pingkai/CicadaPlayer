@@ -39,7 +39,7 @@ public:
         mIsProtected = true;
     }
 
-    std::unique_ptr<IAFPacket> clone() override;
+    std::unique_ptr<IAFPacket> clone() const override;
 
     int64_t getSize() override;
 

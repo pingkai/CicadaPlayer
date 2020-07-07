@@ -2530,7 +2530,7 @@ namespace Cicada {
             // FIXME: return non slice nal only when protected packet
             if (mMediaFrameCb) {
                 // TODO: change to std::unique_ptr<IAFPacket>
-                mMediaFrameCb(mMediaFrameCbArg, pMedia_Frame, ST_TYPE_VIDEO);
+                mMediaFrameCb(mMediaFrameCbArg, pMedia_Frame.get(), ST_TYPE_VIDEO);
             }
 
             mBufferController.AddPacket(move(pMedia_Frame), BUFFER_TYPE_VIDEO);
@@ -2624,7 +2624,7 @@ namespace Cicada {
 
             if (mMediaFrameCb && !pMedia_Frame->isProtected()) {
                 // TODO: change to std::unique_ptr<IAFPacket>
-                mMediaFrameCb(mMediaFrameCbArg, pMedia_Frame, ST_TYPE_AUDIO);
+                mMediaFrameCb(mMediaFrameCbArg, pMedia_Frame.get(), ST_TYPE_AUDIO);
             }
 
             mBufferController.AddPacket(move(pMedia_Frame), BUFFER_TYPE_AUDIO);
@@ -2632,7 +2632,7 @@ namespace Cicada {
                    pFrame->getInfo().streamIndex == mWillChangedSubtitleStreamIndex) {
             if (mMediaFrameCb && !pMedia_Frame->isProtected()) {
                 // TODO: change to std::unique_ptr<IAFPacket>
-                mMediaFrameCb(mMediaFrameCbArg, pMedia_Frame, ST_TYPE_SUB);
+                mMediaFrameCb(mMediaFrameCbArg, pMedia_Frame.get(), ST_TYPE_SUB);
             }
 
             mBufferController.AddPacket(move(pMedia_Frame), BUFFER_TYPE_SUBTITLE);

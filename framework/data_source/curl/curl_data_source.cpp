@@ -341,7 +341,7 @@ int64_t CurlDataSource::Seek(int64_t offset, int whence)
     }
 
     int64_t ret = TrySeekByNewConnection(offset);
-    return (ret >= 0) ? ret : -1;
+    return ret;
 }
 
 int64_t CurlDataSource::TrySeekByNewConnection(int64_t offset)

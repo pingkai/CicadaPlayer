@@ -525,6 +525,7 @@ namespace Cicada {
         bool mBRendingStart {false};
         bool mSecretPlayBack{false};
         bool mDrmKeyValid{false};
+        bool mNeedVideoRender{true};
 
     private:
 

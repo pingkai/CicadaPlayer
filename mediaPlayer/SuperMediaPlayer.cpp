@@ -3033,7 +3033,25 @@ int SuperMediaPlayer::setUpAudioRender(const IAFFrame::audioInfo &info)
 
 int SuperMediaPlayer::SetUpVideoPath()
 {
-    if (mVideoDecoder && mVideoRender) {
+    /*
+     * update the video meta after the first video packet was reached,
+     * otherwise the video meta is incomplete when playing a master hls playList.
+     */
+    updateVideoMeta();
+    auto *meta = (Stream_meta *) (mCurrentVideoMeta.get());
+    bool isHDRVideo = false;
+    if (meta->pixel_fmt == AF_PIX_FMT_YUV420P10BE || meta->pixel_fmt == AF_PIX_FMT_YUV420P10LE) {
+        //   AF_LOGI("HDR video\n");
+        isHDRVideo = true;
+    }
+    /*
+     * HDR video, try use decoder to render first
+     */
+    if (mSet->bEnableTunnelRender || isHDRVideo) {
+        mVideoRender = nullptr;
+        mNeedVideoRender = false;
+    }
+    if (mVideoDecoder && (mVideoRender || !mNeedVideoRender)) {
         return 0;
     }
 
@@ -3052,12 +3070,16 @@ int SuperMediaPlayer::SetUpVideoPath()
 
     int ret = 0;
 
-    if (!mSet->bEnableTunnelRender && mSet->mView != nullptr && mVideoRender == nullptr) {
+    if (mNeedVideoRender && mSet->mView != nullptr && mVideoRender == nullptr) {
         if (mAppStatus == APP_BACKGROUND) {
             AF_LOGW("create video render in background");
         }
         AF_LOGD("SetUpVideoRender start");
         CreateVideoRender();
+        if (mVideoRender == nullptr) {
+            AF_LOGI("try use decoder to render video\n");
+            mNeedVideoRender = false;
+        }
     }
 
     //re set view in case for not set view before
@@ -3072,12 +3094,6 @@ int SuperMediaPlayer::SetUpVideoPath()
     }
 
     AF_LOGD("SetUpVideoDecoder start");
-    /*
-     * update the video meta after the first video packet was reached,
-     * otherwise the video meta is incomplete when playing a master hls playList.
-     */
-    updateVideoMeta();
-    auto *meta = (Stream_meta *) (mCurrentVideoMeta.get());
 
     if (meta->interlaced == InterlacedType_UNKNOWN) {
         meta->interlaced = mVideoInterlaced;
@@ -3130,6 +3146,14 @@ int SuperMediaPlayer::SetUpVideoPath()
         }
     }
 
+    if (!(mVideoDecoder->getFlags() & DECFLAG_OUT) && mVideoRender == nullptr && mSet->mView != nullptr) {
+        AF_LOGD("SetUpVideoRender start");
+        CreateVideoRender();
+        if (mVideoRender == nullptr) {
+            AF_LOGE("create video render error\n");
+        }
+    }
+
     if (meta->duration > mDuration) {
         mDuration = meta->duration;
     }
@@ -3159,6 +3183,10 @@ bool SuperMediaPlayer::CreateVideoRender()
     // lock mAppStatusMutex before mCreateMutex
     std::lock_guard<std::mutex> uMutex(mCreateMutex);
     mVideoRender = videoRenderFactory::create();
+    if (mVideoRender == nullptr) {
+        AF_LOGI("can't create video render\n");
+        return false;
+    }
     mVideoRender->setScale(convertScaleMode(mSet->scaleMode));
     mVideoRender->setRotate(convertRotateMode(mSet->rotateMode));
     mVideoRender->setBackgroundColor(mSet->mVideoBackgroundColor);
@@ -3214,7 +3242,7 @@ int SuperMediaPlayer::CreateVideoDecoder(bool bHW, Stream_meta &meta)
     void *view = nullptr;
 
     if (bHW) {
-        if (mSet->bEnableTunnelRender) {
+        if (!mNeedVideoRender) {
             view = mSet->mView;
             decFlag |= DECFLAG_DIRECT;
         } else {
@@ -3311,6 +3339,7 @@ void SuperMediaPlayer::Reset()
     mPausedByAudioInterrupted = false;
     mSecretPlayBack = false;
     mDrmKeyValid = false;
+    mNeedVideoRender = true;
 }
 
 int SuperMediaPlayer::GetCurrentStreamIndex(StreamType type)

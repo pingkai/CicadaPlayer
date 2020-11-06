@@ -377,9 +377,9 @@ namespace Cicada {
         }
         return 0;
     }
-    void filterAudioRender::preClose()
+    void filterAudioRender::prePause()
     {
-        mState = State::state_uninit;
+        mRenderThread->prePause();
         device_preClose();
     }
 }

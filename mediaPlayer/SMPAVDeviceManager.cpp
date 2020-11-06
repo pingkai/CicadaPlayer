@@ -1,0 +1,219 @@
+//
+// Created by pingkai on 2020/11/2.
+//
+
+#define LOG_TAG "SMPAVDeviceManager"
+#include "SMPAVDeviceManager.h"
+#include <cassert>
+#include <codec/decoderFactory.h>
+#include <render/renderFactory.h>
+#include <utils/errors/framework_error.h>
+#include <utils/frame_work_log.h>
+using namespace Cicada;
+using namespace std;
+SMPAVDeviceManager::SMPAVDeviceManager()
+{}
+SMPAVDeviceManager::~SMPAVDeviceManager()
+{}
+int SMPAVDeviceManager::setUpDecoder(uint64_t decFlag, const Stream_meta *meta, void *device, deviceType type)
+{
+    std::lock_guard<std::mutex> uMutex(mMutex);
+    DecoderHandle *decoderHandle = getDecoderHandle(type);
+    if (decoderHandle == nullptr) {
+        return -EINVAL;
+    }
+    if (decoderHandle->valid) {
+        return 0;
+    }
+    if (decoderHandle->decoder) {
+        if (decoderHandle->match(meta,decFlag,device)) {// reuse decoder
+            decoderHandle->valid = true;
+            decoderHandle->meta = *meta;
+            decoderHandle->decoder->pause(false);
+            return 0;
+        }
+    }
+
+    decoderHandle->meta = *meta;
+    decoderHandle->decFlag = decFlag;
+    decoderHandle->device = device;
+    decoderHandle->decoder = decoderFactory::create(meta->codec, decFlag, max(meta->height, meta->width));
+    if (decoderHandle->decoder == nullptr) {
+        return gen_framework_errno(error_class_codec, codec_error_video_not_support);
+    }
+    int ret = decoderHandle->decoder->open(meta, device, decFlag);
+    if (ret < 0) {
+        AF_LOGE("config decoder error ret= %d \n", ret);
+        decoderHandle->decoder = nullptr;
+        return gen_framework_errno(error_class_codec, codec_error_video_device_error);
+    }
+    decoderHandle->valid = true;
+    return 0;
+}
+SMPAVDeviceManager::DecoderHandle *SMPAVDeviceManager::getDecoderHandle(const SMPAVDeviceManager::deviceType &type)
+{
+    DecoderHandle *decoderHandle = nullptr;
+    if (type == DEVICE_TYPE_VIDEO) {
+        decoderHandle = &mVideoDecoder;
+    } else if (type == DEVICE_TYPE_AUDIO) {
+        decoderHandle = &mAudioDecoder;
+    }
+    return decoderHandle;
+}
+
+void SMPAVDeviceManager::invalidDevices(uint64_t deviceTypes)
+{
+    std::lock_guard<std::mutex> uMutex(mMutex);
+    if (deviceTypes & DEVICE_TYPE_AUDIO) {
+        if (mAudioDecoder.decoder) {
+            mAudioDecoder.decoder->prePause();
+        }
+        if (mAudioRender) {
+            mAudioRender->prePause();
+        }
+        mAudioDecoder.valid = false;
+        mAudioRenderValid = false;
+    }
+    if (deviceTypes & DEVICE_TYPE_VIDEO) {
+        if (mVideoDecoder.decoder) {
+            mVideoDecoder.decoder->prePause();
+        }
+        mVideoDecoder.valid = false;
+    }
+}
+void SMPAVDeviceManager::flushDevice(uint64_t deviceTypes)
+{
+    if (deviceTypes & DEVICE_TYPE_AUDIO) {
+        if (mAudioDecoder.decoder) {
+            mAudioDecoder.decoder->flush();
+        }
+        if (mAudioRender) {
+            mAudioRender->flush();
+        }
+    }
+    if (deviceTypes & DEVICE_TYPE_VIDEO) {
+        if (mVideoDecoder.decoder) {
+            mVideoDecoder.decoder->flush();
+        }
+    }
+}
+int SMPAVDeviceManager::getFrame(std::unique_ptr<IAFFrame> &frame, deviceType type, uint64_t timeOut)
+{
+    DecoderHandle *decoderHandle = getDecoderHandle(type);
+    if (decoderHandle == nullptr || !decoderHandle->valid) {
+        return -EINVAL;
+    }
+    assert(decoderHandle->decoder);
+    return decoderHandle->decoder->getFrame(frame, timeOut);
+}
+int SMPAVDeviceManager::sendPacket(std::unique_ptr<IAFPacket> &packet, deviceType type, uint64_t timeOut)
+{
+    DecoderHandle *decoderHandle = getDecoderHandle(type);
+    if (decoderHandle == nullptr || !decoderHandle->valid) {
+        return -EINVAL;
+    }
+    assert(decoderHandle->decoder);
+    return decoderHandle->decoder->send_packet(packet, timeOut);
+}
+int SMPAVDeviceManager::setVolume(float volume)
+{
+    if (mAudioRender) {
+        return mAudioRender->setVolume(volume);
+    }
+    // TODO: save the value
+    return 0;
+}
+uint64_t SMPAVDeviceManager::getAudioRenderQueDuration()
+{
+    if (mAudioRender) {
+        return mAudioRender->getQueDuration();
+    }
+    return 0;
+}
+int SMPAVDeviceManager::renderAudioFrame(std::unique_ptr<IAFFrame> &frame, int timeOut)
+{
+    if (mAudioRender) {
+        int ret = mAudioRender->renderFrame(frame, timeOut);
+        if (ret == IAudioRender::FORMAT_NOT_SUPPORT) {
+            if (mAudioRender->getQueDuration() == 0) {
+                return ret;
+            } else {
+                return -EAGAIN;
+            }
+        }
+    }
+    return -EINVAL;
+}
+void SMPAVDeviceManager::pauseAudioRender(bool pause)
+{
+    if (mAudioRender) {
+        mAudioRender->pause(pause);
+    }
+    // TODO: save the status
+}
+int SMPAVDeviceManager::setUpAudioRender(const IAFFrame::audioInfo &info)
+{
+    std::lock_guard<std::mutex> uMutex(mMutex);
+    if (mAudioRenderValid){
+        return 0;
+    }
+    if (mAudioRender) {
+        mAudioRender->pause(false);
+        mAudioRenderValid = true;
+        return 0;
+    }
+    if (mAudioRender == nullptr) {
+        mAudioRender = AudioRenderFactory::create();
+    }
+
+    assert(mAudioRender);
+    int audioInitRet = mAudioRender->init(&info);
+
+    if (audioInitRet < 0) {
+        AF_LOGE("AudioOutHandle Init Error is %d", audioInitRet);
+        return -1;
+    } else {
+        mAudioRenderInfo = info;
+        return 0;
+    }
+}
+int SMPAVDeviceManager::setSpeed(float speed)
+{
+    if (mAudioRender) {
+        return mAudioRender->setSpeed(speed);
+    }
+    // TODO: save
+    return 0;
+}
+int64_t SMPAVDeviceManager::getAudioRenderPosition()
+{
+    if (mAudioRender) {
+        return mAudioRender->getPosition();
+    }
+    return INT64_MIN;
+}
+void SMPAVDeviceManager::setAudioRenderListener(IAudioRenderListener *listener)
+{
+    if (mAudioRender) {
+        mAudioRender->setListener(listener);
+    }
+}
+void SMPAVDeviceManager::setMute(bool mute)
+{
+    if (mAudioRender) {
+        mAudioRender->mute(mute);
+    }
+}
+void SMPAVDeviceManager::setAudioRenderingCb(renderingFrameCB cb, void *userData)
+{
+    if (mAudioRender) {
+        mAudioRender->setRenderingCb(cb, userData);
+    }
+}
+uint64_t SMPAVDeviceManager::getVideoDecoderFlags()
+{
+    if (mVideoDecoder.decoder) {
+        return static_cast<uint64_t>(mVideoDecoder.decoder->getFlags());
+    }
+    return 0;
+}

@@ -47,7 +47,7 @@ namespace Cicada {
 
         void flush() override;
 
-        void preClose() override;
+        void prePause() override;
 
     private:
         virtual int init_device() = 0;

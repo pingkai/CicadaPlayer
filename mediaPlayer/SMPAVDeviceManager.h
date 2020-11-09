@@ -96,6 +96,7 @@ namespace Cicada {
         IAFFrame::audioInfo mAudioRenderInfo{};
         bool mAudioRenderValid{false};
         DecoderHandle *getDecoderHandle(const deviceType &type);
+        bool mMute{false};
     };
 }// namespace Cicada
 

@@ -14,7 +14,15 @@ using namespace std;
 SMPAVDeviceManager::SMPAVDeviceManager()
 {}
 SMPAVDeviceManager::~SMPAVDeviceManager()
-{}
+{
+    if (mAudioDecoder.decoder) {
+        mAudioDecoder.decoder->close();
+    }
+    if (mVideoDecoder.decoder) {
+        mVideoDecoder.decoder->flush();
+        mVideoDecoder.decoder->close();
+    }
+}
 int SMPAVDeviceManager::setUpDecoder(uint64_t decFlag, const Stream_meta *meta, void *device, deviceType type)
 {
     std::lock_guard<std::mutex> uMutex(mMutex);
@@ -27,11 +35,19 @@ int SMPAVDeviceManager::setUpDecoder(uint64_t decFlag, const Stream_meta *meta, 
     }
     if (decoderHandle->decoder) {
         if (decoderHandle->match(meta,decFlag,device)) {// reuse decoder
+
+            AF_LOGI("reuse deocoder %s\n", type == DEVICE_TYPE_VIDEO ? "video" : "audio ");
             decoderHandle->valid = true;
             decoderHandle->meta = *meta;
+            decoderHandle->decoder->flush();
             decoderHandle->decoder->pause(false);
             return 0;
         }
+        /*
+         *  must flush decoder before close on android mediacodec decoder
+         */
+        mVideoDecoder.decoder->flush();
+        decoderHandle->decoder->close();
     }
 
     decoderHandle->meta = *meta;
@@ -70,6 +86,7 @@ void SMPAVDeviceManager::invalidDevices(uint64_t deviceTypes)
         }
         if (mAudioRender) {
             mAudioRender->prePause();
+            mAudioRender->mute(true);
         }
         mAudioDecoder.valid = false;
         mAudioRenderValid = false;
@@ -83,16 +100,19 @@ void SMPAVDeviceManager::invalidDevices(uint64_t deviceTypes)
 }
 void SMPAVDeviceManager::flushDevice(uint64_t deviceTypes)
 {
+    /*
+     *  flush devices only on valid, otherwise the devices will be flushed on reusing
+     */
     if (deviceTypes & DEVICE_TYPE_AUDIO) {
-        if (mAudioDecoder.decoder) {
+        if (mAudioDecoder.valid) {
             mAudioDecoder.decoder->flush();
         }
-        if (mAudioRender) {
+        if (mAudioRenderValid) {
             mAudioRender->flush();
         }
     }
     if (deviceTypes & DEVICE_TYPE_VIDEO) {
-        if (mVideoDecoder.decoder) {
+        if (mVideoDecoder.valid) {
             mVideoDecoder.decoder->flush();
         }
     }
@@ -158,6 +178,8 @@ int SMPAVDeviceManager::setUpAudioRender(const IAFFrame::audioInfo &info)
         return 0;
     }
     if (mAudioRender) {
+        mAudioRender->flush();
+        mAudioRender->mute(mMute);
         mAudioRender->pause(false);
         mAudioRenderValid = true;
         return 0;
@@ -203,6 +225,7 @@ void SMPAVDeviceManager::setMute(bool mute)
     if (mAudioRender) {
         mAudioRender->mute(mute);
     }
+    mMute = mute;
 }
 void SMPAVDeviceManager::setAudioRenderingCb(renderingFrameCB cb, void *userData)
 {

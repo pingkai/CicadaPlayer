@@ -7,6 +7,7 @@
 
 #include <codec/IDecoder.h>
 #include <render/audio/IAudioRender.h>
+#include <render/video/IVideoRender.h>
 
 
 // TODO: add create lock
@@ -88,6 +89,23 @@ namespace Cicada {
 
         uint64_t getVideoDecoderFlags();
 
+        int createVideoRender();
+
+        bool isVideoRenderValid()
+        {
+            return mVideoRenderValid;
+        }
+        IVideoRender *getVideoRender()
+        {
+            if (mVideoRender) {
+                return mVideoRender.get();
+            }
+            return nullptr;
+        }
+
+    private:
+        DecoderHandle *getDecoderHandle(const deviceType &type);
+
     private:
         std::mutex mMutex{};
         DecoderHandle mAudioDecoder;
@@ -95,8 +113,10 @@ namespace Cicada {
         std::unique_ptr<IAudioRender> mAudioRender{nullptr};
         IAFFrame::audioInfo mAudioRenderInfo{};
         bool mAudioRenderValid{false};
-        DecoderHandle *getDecoderHandle(const deviceType &type);
         bool mMute{false};
+        std::unique_ptr<IVideoRender> mVideoRender{nullptr};
+        void flushVideoRender();
+        bool mVideoRenderValid{false};
     };
 }// namespace Cicada
 

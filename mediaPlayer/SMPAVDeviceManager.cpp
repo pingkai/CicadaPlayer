@@ -19,6 +19,8 @@ SMPAVDeviceManager::~SMPAVDeviceManager()
         mAudioDecoder.decoder->close();
     }
     if (mVideoDecoder.decoder) {
+        flushVideoRender();
+        mVideoRender = nullptr;
         mVideoDecoder.decoder->flush();
         mVideoDecoder.decoder->close();
     }
@@ -39,6 +41,7 @@ int SMPAVDeviceManager::setUpDecoder(uint64_t decFlag, const Stream_meta *meta, 
             AF_LOGI("reuse deocoder %s\n", type == DEVICE_TYPE_VIDEO ? "video" : "audio ");
             decoderHandle->valid = true;
             decoderHandle->meta = *meta;
+            flushVideoRender();
             decoderHandle->decoder->flush();
             decoderHandle->decoder->pause(false);
             return 0;
@@ -46,6 +49,7 @@ int SMPAVDeviceManager::setUpDecoder(uint64_t decFlag, const Stream_meta *meta, 
         /*
          *  must flush decoder before close on android mediacodec decoder
          */
+        flushVideoRender();
         mVideoDecoder.decoder->flush();
         decoderHandle->decoder->close();
     }
@@ -96,6 +100,7 @@ void SMPAVDeviceManager::invalidDevices(uint64_t deviceTypes)
             mVideoDecoder.decoder->prePause();
         }
         mVideoDecoder.valid = false;
+        mVideoRenderValid = false;
     }
 }
 void SMPAVDeviceManager::flushDevice(uint64_t deviceTypes)
@@ -114,6 +119,9 @@ void SMPAVDeviceManager::flushDevice(uint64_t deviceTypes)
     if (deviceTypes & DEVICE_TYPE_VIDEO) {
         if (mVideoDecoder.valid) {
             mVideoDecoder.decoder->flush();
+        }
+        if (mVideoRenderValid) {
+            flushVideoRender();
         }
     }
 }
@@ -204,6 +212,9 @@ int SMPAVDeviceManager::setSpeed(float speed)
     if (mAudioRender) {
         return mAudioRender->setSpeed(speed);
     }
+    if (mVideoRender) {
+        mVideoRender->setSpeed(speed);
+    }
     // TODO: save
     return 0;
 }
@@ -239,4 +250,23 @@ uint64_t SMPAVDeviceManager::getVideoDecoderFlags()
         return static_cast<uint64_t>(mVideoDecoder.decoder->getFlags());
     }
     return 0;
+}
+int SMPAVDeviceManager::createVideoRender()
+{
+    if (mVideoRenderValid) {
+        flushVideoRender();
+        mVideoRenderValid = true;
+        return 0;
+    }
+    mVideoRender = videoRenderFactory::create();
+    assert(mVideoRender != nullptr);
+    mVideoRenderValid = true;
+    return 0;
+}
+void SMPAVDeviceManager::flushVideoRender()
+{
+    if (mVideoRender) {
+        unique_ptr<IAFFrame> frame{nullptr};
+        mVideoRender->renderFrame(frame);
+    }
 }

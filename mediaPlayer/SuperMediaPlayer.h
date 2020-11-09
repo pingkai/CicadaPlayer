@@ -430,7 +430,6 @@ namespace Cicada {
 
         std::mutex mAppStatusMutex;
         std::atomic<APP_STATUS> mAppStatus{APP_FOREGROUND};
-        std::unique_ptr<IVideoRender> mVideoRender{};
 //#ifdef WIN32
 //        AlivcDxva2Render m_dxva2Render;
 //#endif

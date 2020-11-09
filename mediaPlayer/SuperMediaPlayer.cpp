@@ -80,7 +80,6 @@ SuperMediaPlayer::~SuperMediaPlayer()
     mCanceled = true;
     mPlayerCondition.notify_one();
     mApsaraThread->stop();
-    mVideoRender = nullptr;
     mSubPlayer = nullptr;
     mSubListener = nullptr;
     // delete mPNotifier after mPMainThread, to avoid be using
@@ -135,8 +134,8 @@ void SuperMediaPlayer::CaptureScreen()
 {
     std::lock_guard<std::mutex> uMutex(mCreateMutex);
 
-    if (mVideoRender) {
-        mVideoRender->captureScreen([this](uint8_t *data, int width, int height) {
+    if (mAVDeviceManager->isVideoRenderValid()) {
+        mAVDeviceManager->getVideoRender()->captureScreen([this](uint8_t *data, int width, int height) {
             if (this->mPNotifier) {
                 this->mPNotifier->NotifyCaptureScreen(data, width, height);
             }
@@ -401,7 +400,7 @@ int SuperMediaPlayer::Stop()
         mDataSource = nullptr;
     }
 
-    if (mVideoRender) {
+    if (mAVDeviceManager->isVideoRenderValid()) {
         // lock mAppStatusMutex before mCreateMutex
         std::lock_guard<std::mutex> lock(mAppStatusMutex);
 
@@ -410,7 +409,7 @@ int SuperMediaPlayer::Stop()
             std::lock_guard<std::mutex> uMutex(mCreateMutex);
 
             if (mSet->clearShowWhenStop) {
-                mVideoRender->clearScreen();
+                mAVDeviceManager->getVideoRender()->clearScreen();
             }
         }
     }
@@ -550,8 +549,8 @@ int SuperMediaPlayer::SetOption(const char *key, const char *value)
     } else if (theKey == "surfaceChanged") {
         std::lock_guard<std::mutex> uMutex(mCreateMutex);
 
-        if (mVideoRender != nullptr) {
-            mVideoRender->surfaceChanged();
+        if (mAVDeviceManager->isVideoRenderValid()) {
+            mAVDeviceManager->getVideoRender()->surfaceChanged();
         }
     } else if (theKey == "streamTypes") {
         uint64_t flags = atoll(value);
@@ -934,8 +933,8 @@ IVideoRender::Flip SuperMediaPlayer::convertMirrorMode(MirrorMode mode)
 
 float SuperMediaPlayer::GetVideoRenderFps()
 {
-    if (mVideoRender) {
-        return mVideoRender->getRenderFPS();
+    if (mAVDeviceManager->isVideoRenderValid()) {
+        return mAVDeviceManager->getVideoRender()->getRenderFPS();
     }
 
     return mUtil->getVideoRenderFps();
@@ -2180,8 +2179,8 @@ void SuperMediaPlayer::SendVideoFrameToRender(unique_ptr<IAFFrame> frame, bool v
             return;
         }
     }
-    if (mVideoRender) {
-        int ret = mVideoRender->renderFrame(frame);
+    if (mAVDeviceManager->isVideoRenderValid()) {
+        int ret = mAVDeviceManager->getVideoRender()->renderFrame(frame);
 
         if (ret < 0) {
             AF_LOGE("renderFrame error \n");
@@ -2654,10 +2653,6 @@ void SuperMediaPlayer::FlushAudioPath()
 
 void SuperMediaPlayer::FlushVideoPath()
 {
-    if (mVideoRender) {
-        unique_ptr<IAFFrame> frame{nullptr};
-        mVideoRender->renderFrame(frame);
-    }
     mAVDeviceManager->flushDevice(SMPAVDeviceManager::DEVICE_TYPE_VIDEO);
 
     videoDecoderEOS = false;
@@ -2985,7 +2980,7 @@ int SuperMediaPlayer::setUpAudioRender(const IAFFrame::audioInfo &info)
 
 int SuperMediaPlayer::SetUpVideoPath()
 {
-    if (mAVDeviceManager->isDecoderValid(SMPAVDeviceManager::DEVICE_TYPE_VIDEO) && mVideoRender) {
+    if (mAVDeviceManager->isDecoderValid(SMPAVDeviceManager::DEVICE_TYPE_VIDEO) && mAVDeviceManager->isVideoRenderValid()) {
         return 0;
     }
 
@@ -3004,7 +2999,7 @@ int SuperMediaPlayer::SetUpVideoPath()
 
     int ret = 0;
 
-    if (!mSet->bEnableTunnelRender && mSet->mView != nullptr && mVideoRender == nullptr) {
+    if (!mSet->bEnableTunnelRender && mSet->mView != nullptr && !mAVDeviceManager->isVideoRenderValid()) {
         if (mAppStatus == APP_BACKGROUND) {
             AF_LOGW("create video render in background");
         }
@@ -3014,8 +3009,8 @@ int SuperMediaPlayer::SetUpVideoPath()
 
     //re set view in case for not set view before
     if (mSet->mView) {
-        if (mVideoRender) {
-            mVideoRender->setDisPlay(mSet->mView);
+        if (mAVDeviceManager->isVideoRenderValid()) {
+            mAVDeviceManager->getVideoRender()->setDisPlay(mSet->mView);
         }
     }
 
@@ -3104,27 +3099,28 @@ void SuperMediaPlayer::updateVideoMeta()
 
 bool SuperMediaPlayer::CreateVideoRender()
 {
-    if (nullptr != mVideoRender) {
+    if (mAVDeviceManager->isVideoRenderValid()) {
         return true;
     }
 
     // lock mAppStatusMutex before mCreateMutex
     std::lock_guard<std::mutex> uMutex(mCreateMutex);
-    mVideoRender = videoRenderFactory::create();
-    mVideoRender->setScale(convertScaleMode(mSet->scaleMode));
-    mVideoRender->setRotate(convertRotateMode(mSet->rotateMode));
-    mVideoRender->setBackgroundColor(mSet->mVideoBackgroundColor);
-    mVideoRender->setFlip(convertMirrorMode(mSet->mirrorMode));
-    mVideoRender->setDisPlay(mSet->mView);
-    mVideoRender->setRenderResultCallback([this](int64_t pts, bool rendered) -> void { VideoRenderCallback(this, pts, nullptr); });
-    int renderRet = mVideoRender->init();
+    mAVDeviceManager->createVideoRender();
+    mAVDeviceManager->getVideoRender()->setScale(convertScaleMode(mSet->scaleMode));
+    mAVDeviceManager->getVideoRender()->setRotate(convertRotateMode(mSet->rotateMode));
+    mAVDeviceManager->getVideoRender()->setBackgroundColor(mSet->mVideoBackgroundColor);
+    mAVDeviceManager->getVideoRender()->setFlip(convertMirrorMode(mSet->mirrorMode));
+    mAVDeviceManager->getVideoRender()->setDisPlay(mSet->mView);
+    mAVDeviceManager->getVideoRender()->setRenderResultCallback(
+            [this](int64_t pts, bool rendered) -> void { VideoRenderCallback(this, pts, nullptr); });
+    int renderRet = mAVDeviceManager->getVideoRender()->init();
 
     if (renderRet != 0) {
         // for windows init failed, which may need change render type in future.
         mPNotifier->NotifyEvent(MEDIA_PLAYER_EVENT_VIDEO_RENDER_INIT_ERROR, "init video render failed");
     }
 
-    mVideoRender->setSpeed(mSet->rate);
+    mAVDeviceManager->setSpeed(mSet->rate);
     return true;
 }
 
@@ -3158,8 +3154,8 @@ int SuperMediaPlayer::CreateVideoDecoder(bool bHW, Stream_meta &meta)
             view = mSet->mView;
             decFlag |= DECFLAG_DIRECT;
         } else {
-            if (mVideoRender) {
-                view = mVideoRender->getSurface();
+            if (mAVDeviceManager->isVideoRenderValid()) {
+                view = mAVDeviceManager->getVideoRender()->getSurface();
             }
         }
     }
@@ -3846,30 +3842,30 @@ void SuperMediaPlayer::ProcessVideoRenderedMsg(int64_t pts, int64_t timeMs, void
 
 void SuperMediaPlayer::ProcessSetDisplayMode()
 {
-    if (mVideoRender) {
-        mVideoRender->setScale(convertScaleMode(mSet->scaleMode));
+    if (mAVDeviceManager->isVideoRenderValid()) {
+        mAVDeviceManager->getVideoRender()->setScale(convertScaleMode(mSet->scaleMode));
     }
 }
 
 
 void SuperMediaPlayer::ProcessSetRotationMode()
 {
-    if (mVideoRender) {
-        mVideoRender->setRotate(convertRotateMode(mSet->rotateMode));
+    if (mAVDeviceManager->isVideoRenderValid()) {
+        mAVDeviceManager->getVideoRender()->setRotate(convertRotateMode(mSet->rotateMode));
     }
 }
 
 void SuperMediaPlayer::ProcessSetMirrorMode()
 {
-    if (mVideoRender) {
-        mVideoRender->setFlip(convertMirrorMode(mSet->mirrorMode));
+    if (mAVDeviceManager->isVideoRenderValid()) {
+        mAVDeviceManager->getVideoRender()->setFlip(convertMirrorMode(mSet->mirrorMode));
     }
 }
 
 void SuperMediaPlayer::ProcessSetVideoBackgroundColor()
 {
-    if (mVideoRender) {
-        mVideoRender->setBackgroundColor(mSet->mVideoBackgroundColor);
+    if (mAVDeviceManager->isVideoRenderValid()) {
+        mAVDeviceManager->getVideoRender()->setBackgroundColor(mSet->mVideoBackgroundColor);
     }
 }
 
@@ -3882,8 +3878,8 @@ void SuperMediaPlayer::ProcessSetViewMsg(void *view)
     mSet->mView = view;
     std::unique_lock<std::mutex> uMutex(mCreateMutex);
 
-    if (mVideoRender) {
-        mVideoRender->setDisPlay(view);
+    if (mAVDeviceManager->isVideoRenderValid()) {
+        mAVDeviceManager->getVideoRender()->setDisPlay(view);
     }
 }
 
@@ -4088,9 +4084,9 @@ void SuperMediaPlayer::ProcessVideoCleanFrameMsg()
         mVideoFrameQue.pop();
     }
 
-    if (mVideoRender) {
+    if (mAVDeviceManager->isVideoRenderValid()) {
         unique_ptr<IAFFrame> frame = nullptr;
-        mVideoRender->renderFrame(frame);
+        mAVDeviceManager->getVideoRender()->renderFrame(frame);
     }
 
     mPlayedVideoPts = INT64_MIN;
@@ -4119,14 +4115,7 @@ void SuperMediaPlayer::ProcessVideoHoldMsg(bool hold)
 void SuperMediaPlayer::ProcessSetSpeed(float speed)
 {
     if (!CicadaUtils::isEqual(mSet->rate, speed)) {
-        if (HAVE_AUDIO) {
-            mAVDeviceManager->setSpeed(speed);
-        }
-
-        if (mVideoRender) {
-            mVideoRender->setSpeed(speed);
-        }
-
+        mAVDeviceManager->setSpeed(speed);
         mSet->rate = speed;
         mMasterClock.SetScale(speed);
     }

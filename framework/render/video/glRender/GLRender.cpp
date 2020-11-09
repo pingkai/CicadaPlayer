@@ -506,18 +506,16 @@ void GLRender::captureScreen(std::function<void(uint8_t *, int, int)> func)
 void *GLRender::getSurface()
 {
 #ifdef __ANDROID__
-    {
+    IProgramContext *programContext = getProgram(AF_PIX_FMT_CICADA_MEDIA_CODEC);
+
+    if (programContext == nullptr || programContext->getSurface() == nullptr) {
         std::unique_lock<std::mutex> locker(mCreateOutTextureMutex);
         needCreateOutTexture = true;
         mCreateOutTextureCondition.wait(locker, [this]() -> int {
             return !needCreateOutTexture;
         });
     }
-    IProgramContext *programContext = getProgram(AF_PIX_FMT_CICADA_MEDIA_CODEC);
-
-    if (programContext == nullptr) {
-        return nullptr;
-    }
+    programContext = getProgram(AF_PIX_FMT_CICADA_MEDIA_CODEC);
 
     return programContext->getSurface();
 #endif

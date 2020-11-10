@@ -15,13 +15,6 @@
 namespace Cicada {
     class filterAudioRender : public IAudioRender {
     public:
-        enum State {
-            state_uninit,   // 0:constructor
-            state_init,   // 1:inited: Demuxer output streams,
-            state_pause,   // 2:pause :
-            state_running,  // 3:running
-        };
-    public:
 
         filterAudioRender();
 
@@ -97,7 +90,7 @@ namespace Cicada {
         IAFFrame::audioInfo mInputInfo{};
         IAFFrame::audioInfo mOutputInfo{};
         bool needFilter = false;
-        atomic<State> mState{State::state_uninit};
+        atomic<bool> mRunning{false};
 
     private:
 

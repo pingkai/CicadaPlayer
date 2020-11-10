@@ -187,9 +187,15 @@ public:
 
     virtual float getRenderFPS() = 0;
 
+    virtual void invalid(bool invalid)
+    {
+        mInvalid = invalid;
+    }
+
 
 protected:
     IVideoRenderFilter *mFilter{};
+    bool mInvalid{false};
 };
 
 

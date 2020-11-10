@@ -304,7 +304,9 @@ bool GLRender::renderActually()
 
         if (viewSizeChanged || displayViewChanged
                 || (mGLSurface == nullptr && mDisplayView != nullptr)) {
-            createGLSurface();
+            if (!mInvalid) {
+                createGLSurface();
+            }
         } else {
             mContext->MakeCurrent(mGLSurface);
         }
@@ -312,7 +314,7 @@ bool GLRender::renderActually()
     mWindowWidth = mContext->GetWidth();
     mWindowHeight = mContext->GetHeight();
 
-    if (mGLSurface == nullptr) {
+    if (mGLSurface == nullptr || mInvalid) {
 
         std::unique_lock<std::mutex> locker(mFrameMutex);
         if (!mInputQueue.empty()) {

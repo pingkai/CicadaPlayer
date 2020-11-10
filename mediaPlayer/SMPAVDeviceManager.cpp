@@ -99,6 +99,9 @@ void SMPAVDeviceManager::invalidDevices(uint64_t deviceTypes)
         if (mVideoDecoder.decoder) {
             mVideoDecoder.decoder->prePause();
         }
+        if (mVideoRender) {
+            mVideoRender->invalid(true);
+        }
         mVideoDecoder.valid = false;
         mVideoRenderValid = false;
     }
@@ -204,6 +207,7 @@ int SMPAVDeviceManager::setUpAudioRender(const IAFFrame::audioInfo &info)
         return -1;
     } else {
         mAudioRenderInfo = info;
+        mAudioRenderValid = true;
         return 0;
     }
 }
@@ -258,6 +262,7 @@ int SMPAVDeviceManager::createVideoRender()
     }
     if (mVideoRender) {
         flushVideoRender();
+        mVideoRender->invalid(false);
         mVideoRenderValid = true;
         return 0;
     }

@@ -1598,7 +1598,7 @@ void SuperMediaPlayer::doDeCode()
     }
 
     //get audio packet to decode
-    if (HAVE_AUDIO && mAVDeviceManager->isDecoderValid(SMPAVDeviceManager::DEVICE_TYPE_VIDEO)) {
+    if (HAVE_AUDIO && mAVDeviceManager->isDecoderValid(SMPAVDeviceManager::DEVICE_TYPE_AUDIO)) {
 
         while (mAudioFrameQue.size() < 2 && !audioDecoderEOS && !mCanceled) {
 

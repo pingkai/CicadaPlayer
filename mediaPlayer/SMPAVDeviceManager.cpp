@@ -254,10 +254,14 @@ uint64_t SMPAVDeviceManager::getVideoDecoderFlags()
 int SMPAVDeviceManager::createVideoRender()
 {
     if (mVideoRenderValid) {
+        return 0;
+    }
+    if (mVideoRender) {
         flushVideoRender();
         mVideoRenderValid = true;
         return 0;
     }
+
     mVideoRender = videoRenderFactory::create();
     assert(mVideoRender != nullptr);
     mVideoRenderValid = true;

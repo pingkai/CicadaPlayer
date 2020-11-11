@@ -2734,9 +2734,9 @@ int64_t SuperMediaPlayer::getPlayerBufferDuration(bool gotMax, bool internal)
             duration_c += mDemuxerService->getDemuxerHandle()->getBufferDuration(mCurrentVideoIndex);
         }
 
-        if (mVideoDecoder) {
+        if (mAVDeviceManager->isDecoderValid(SMPAVDeviceManager::DEVICE_TYPE_VIDEO)) {
             // FIXME: get the accurate duration
-            duration_c += mVideoDecoder->getInputPaddingSize() * 40 * 1000;
+            duration_c += mAVDeviceManager->getDecoder(SMPAVDeviceManager::DEVICE_TYPE_VIDEO)->getInputPaddingSize() * 40 * 1000;
         }
     }
 
@@ -2748,9 +2748,9 @@ int64_t SuperMediaPlayer::getPlayerBufferDuration(bool gotMax, bool internal)
             duration_c += mDemuxerService->getDemuxerHandle()->getBufferDuration(mCurrentAudioIndex);
         }
 
-        if (mAudioDecoder) {
+        if (mAVDeviceManager->isDecoderValid(SMPAVDeviceManager::DEVICE_TYPE_AUDIO)) {
             // FIXME: get the accurate duration
-            duration_c += mAudioDecoder->getInputPaddingSize() * 23 * 1000;
+            duration_c += mAVDeviceManager->getDecoder(SMPAVDeviceManager::DEVICE_TYPE_AUDIO)->getInputPaddingSize() * 23 * 1000;
         }
     }
 
@@ -3323,7 +3323,6 @@ void SuperMediaPlayer::ProcessPrepareMsg()
     }
 
     mPlayStatus = PLAYER_PREPARINIT;
-    mAudioRender = nullptr;
     bool noFile = false;
 
     if (!(mBSReadCb != nullptr && mBSSeekCb != nullptr && mBSCbArg != nullptr)) {

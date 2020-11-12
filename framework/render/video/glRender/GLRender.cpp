@@ -278,7 +278,7 @@ bool GLRender::renderActually()
     }
 
     if (mInBackground) {
-//        AF_LOGD("renderActurally  .. InBackground ..");
+        //        AF_LOGD("renderActurally  .. InBackground ..");
         return false;
     }
 
@@ -296,6 +296,9 @@ bool GLRender::renderActually()
     }
 
 #endif
+    if (mInvalid) {
+        return false;
+    }
     bool displayViewChanged  = false;
     {
         unique_lock<mutex> viewLock(mViewMutex);
@@ -304,9 +307,7 @@ bool GLRender::renderActually()
 
         if (viewSizeChanged || displayViewChanged
                 || (mGLSurface == nullptr && mDisplayView != nullptr)) {
-            if (!mInvalid) {
-                createGLSurface();
-            }
+            createGLSurface();
         } else {
             mContext->MakeCurrent(mGLSurface);
         }

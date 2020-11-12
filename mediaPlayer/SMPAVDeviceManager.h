@@ -102,6 +102,9 @@ namespace Cicada {
             }
             return nullptr;
         }
+        void flushVideoRender();
+
+        int renderVideoFrame(std::unique_ptr<IAFFrame> &frame);
 
     private:
         DecoderHandle *getDecoderHandle(const deviceType &type);
@@ -115,7 +118,6 @@ namespace Cicada {
         bool mAudioRenderValid{false};
         bool mMute{false};
         std::unique_ptr<IVideoRender> mVideoRender{nullptr};
-        void flushVideoRender();
         bool mVideoRenderValid{false};
     };
 }// namespace Cicada

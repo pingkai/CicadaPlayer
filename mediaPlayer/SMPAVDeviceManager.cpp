@@ -50,7 +50,7 @@ int SMPAVDeviceManager::setUpDecoder(uint64_t decFlag, const Stream_meta *meta, 
          *  must flush decoder before close on android mediacodec decoder
          */
         flushVideoRender();
-        mVideoDecoder.decoder->flush();
+        decoderHandle->decoder->flush();
         decoderHandle->decoder->close();
     }
 
@@ -99,9 +99,9 @@ void SMPAVDeviceManager::invalidDevices(uint64_t deviceTypes)
         if (mVideoDecoder.decoder) {
             mVideoDecoder.decoder->prePause();
         }
-        if (mVideoRender) {
-            mVideoRender->invalid(true);
-        }
+        //        if (mVideoRender) {
+        //            mVideoRender->invalid(true);
+        //        }
         mVideoDecoder.valid = false;
         mVideoRenderValid = false;
     }
@@ -262,7 +262,7 @@ int SMPAVDeviceManager::createVideoRender()
     }
     if (mVideoRender) {
         flushVideoRender();
-        mVideoRender->invalid(false);
+        mVideoRender->invalid(true);
         mVideoRenderValid = true;
         return 0;
     }
@@ -278,4 +278,13 @@ void SMPAVDeviceManager::flushVideoRender()
         unique_ptr<IAFFrame> frame{nullptr};
         mVideoRender->renderFrame(frame);
     }
+}
+int SMPAVDeviceManager::renderVideoFrame(unique_ptr<IAFFrame> &frame)
+{
+    if (mVideoRender) {
+        int ret = mVideoRender->renderFrame(frame);
+        mVideoRender->invalid(false);
+        return ret;
+    }
+    return -EINVAL;
 }

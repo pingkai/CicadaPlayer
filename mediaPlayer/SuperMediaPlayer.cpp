@@ -2180,7 +2180,7 @@ void SuperMediaPlayer::SendVideoFrameToRender(unique_ptr<IAFFrame> frame, bool v
         }
     }
     if (mAVDeviceManager->isVideoRenderValid()) {
-        int ret = mAVDeviceManager->getVideoRender()->renderFrame(frame);
+        int ret = mAVDeviceManager->renderVideoFrame(frame);
 
         if (ret < 0) {
             AF_LOGE("renderFrame error \n");
@@ -3148,6 +3148,7 @@ int SuperMediaPlayer::CreateVideoDecoder(bool bHW, Stream_meta &meta)
     }
 
     void *view = nullptr;
+    mAVDeviceManager->flushVideoRender();
 
     if (bHW) {
         if (mSet->bEnableTunnelRender) {
@@ -3169,7 +3170,6 @@ int SuperMediaPlayer::CreateVideoDecoder(bool bHW, Stream_meta &meta)
         decFlag |= DECFLAG_OUTPUT_FRAME_ASAP;
     }
     ret = mAVDeviceManager->setUpDecoder(decFlag, (const Stream_meta *) (&meta), view, SMPAVDeviceManager::DEVICE_TYPE_VIDEO);
-
     if (ret < 0) {
         return ret;
     }

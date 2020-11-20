@@ -338,9 +338,9 @@ int SuperMediaPlayer::Stop()
     mPNotifier->Clean();
     mPNotifier->Enable(false);
     Interrupt(true);
-    mAVDeviceManager->invalidDevices(SMPAVDeviceManager::DEVICE_TYPE_AUDIO | SMPAVDeviceManager::DEVICE_TYPE_VIDEO);
     mPlayerCondition.notify_one();
     mApsaraThread->pause();
+    mAVDeviceManager->invalidDevices(SMPAVDeviceManager::DEVICE_TYPE_AUDIO | SMPAVDeviceManager::DEVICE_TYPE_VIDEO);
     mPlayStatus = PLAYER_STOPPED;
     //        ChangePlayerStatus(PLAYER_STOPPED);
     mBufferController->ClearPacket(BUFFER_TYPE_AV);
@@ -2230,7 +2230,7 @@ int SuperMediaPlayer::DecodeAudio(unique_ptr<IAFPacket> &pPacket)
         bool haveError = false;
 
         if (ret & STATUS_HAVE_ERROR) {
-            if (mAVDeviceManager->getDecoder(SMPAVDeviceManager::DEVICE_TYPE_VIDEO)->get_error_frame_no() > MAX_DECODE_ERROR_FRAME) {
+            if (mAVDeviceManager->getDecoder(SMPAVDeviceManager::DEVICE_TYPE_AUDIO)->get_error_frame_no() > MAX_DECODE_ERROR_FRAME) {
                 haveError = true;
             }
         }
@@ -2325,7 +2325,7 @@ void SuperMediaPlayer::setUpAVPath()
     }
 
     if (mCurrentAudioIndex >= 0 &&
-        (!mAVDeviceManager->isDecoderValid(SMPAVDeviceManager::DEVICE_TYPE_VIDEO) || !mAVDeviceManager->isAudioRenderValid())) {
+        (!mAVDeviceManager->isDecoderValid(SMPAVDeviceManager::DEVICE_TYPE_AUDIO) || !mAVDeviceManager->isAudioRenderValid())) {
         AF_LOGD("SetUpAudioPath start");
         int ret = SetUpAudioPath();
 
@@ -2659,6 +2659,7 @@ void SuperMediaPlayer::FlushVideoPath()
     //flush frame queue
 
     while (!mVideoFrameQue.empty()) {
+        mVideoFrameQue.front()->setDiscard(true);
         ProcessVideoRenderedMsg(mVideoFrameQue.front()->getInfo().pts, af_getsteady_ms(), nullptr);
         mVideoFrameQue.pop();
     }
@@ -2921,7 +2922,7 @@ int SuperMediaPlayer::setUpAudioDecoder(const Stream_meta *meta)
 int SuperMediaPlayer::SetUpAudioPath()
 {
     int ret = 0;
-    if (!mAVDeviceManager->isDecoderValid(SMPAVDeviceManager::DEVICE_TYPE_VIDEO)) {
+    if (!mAVDeviceManager->isDecoderValid(SMPAVDeviceManager::DEVICE_TYPE_AUDIO)) {
 
         /*
          * make sure the audio stream is opened before get stream meta,
@@ -3156,7 +3157,11 @@ int SuperMediaPlayer::CreateVideoDecoder(bool bHW, Stream_meta &meta)
             decFlag |= DECFLAG_DIRECT;
         } else {
             if (mAVDeviceManager->isVideoRenderValid()) {
-                view = mAVDeviceManager->getVideoRender()->getSurface();
+                /*
+                 * Get a cached surface, then the mediacodec video decoder can be reuse,
+                 * otherwise the mediacodec video decoder will be recreate on setUpDecoder.
+                 */
+                view = mAVDeviceManager->getVideoRender()->getSurface(false);
             }
         }
     }
@@ -4080,13 +4085,11 @@ void SuperMediaPlayer::ProcessVideoCleanFrameMsg()
     while (!mVideoFrameQue.empty()) {
         int64_t pts = mVideoFrameQue.front()->getInfo().pts;
         ProcessVideoRenderedMsg(pts, af_getsteady_ms(), nullptr);
+        mVideoFrameQue.front()->setDiscard(true);
         mVideoFrameQue.pop();
     }
 
-    if (mAVDeviceManager->isVideoRenderValid()) {
-        unique_ptr<IAFFrame> frame = nullptr;
-        mAVDeviceManager->getVideoRender()->renderFrame(frame);
-    }
+    mAVDeviceManager->flushVideoRender();
 
     mPlayedVideoPts = INT64_MIN;
     mCurVideoPts = INT64_MIN;

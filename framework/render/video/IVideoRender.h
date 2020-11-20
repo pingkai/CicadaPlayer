@@ -180,7 +180,7 @@ public:
     }
 
 
-    virtual void *getSurface()
+    virtual void *getSurface(bool cached)
     {
         return nullptr;
     }

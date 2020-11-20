@@ -9,6 +9,9 @@
 #include <render/renderFactory.h>
 #include <utils/errors/framework_error.h>
 #include <utils/frame_work_log.h>
+#ifdef __APPLE__
+#include <codec/Apple/AppleVideoToolBox.h>
+#endif
 using namespace Cicada;
 using namespace std;
 SMPAVDeviceManager::SMPAVDeviceManager()
@@ -25,7 +28,7 @@ SMPAVDeviceManager::~SMPAVDeviceManager()
         mVideoDecoder.decoder->close();
     }
 }
-int SMPAVDeviceManager::setUpDecoder(uint64_t decFlag, const Stream_meta *meta, void *device, deviceType type)
+int SMPAVDeviceManager::setUpDecoder(uint64_t decFlag, const Stream_meta *meta, void *device, deviceType type, uint32_t dstFormat)
 {
     std::lock_guard<std::mutex> uMutex(mMutex);
     DecoderHandle *decoderHandle = getDecoderHandle(type);
@@ -36,11 +39,12 @@ int SMPAVDeviceManager::setUpDecoder(uint64_t decFlag, const Stream_meta *meta, 
         return 0;
     }
     if (decoderHandle->decoder) {
-        if (decoderHandle->match(meta,decFlag,device)) {// reuse decoder
+        if (decoderHandle->match(meta, decFlag, device, dstFormat)) {// reuse decoder
 
-            AF_LOGI("reuse deocoder %s\n", type == DEVICE_TYPE_VIDEO ? "video" : "audio ");
+            AF_LOGI("reuse decoder %s\n", type == DEVICE_TYPE_VIDEO ? "video" : "audio ");
             decoderHandle->valid = true;
             decoderHandle->meta = *meta;
+            decoderHandle->mDstFormat = dstFormat;
             flushVideoRender();
             decoderHandle->decoder->flush();
             decoderHandle->decoder->pause(false);
@@ -61,7 +65,19 @@ int SMPAVDeviceManager::setUpDecoder(uint64_t decFlag, const Stream_meta *meta, 
     if (decoderHandle->decoder == nullptr) {
         return gen_framework_errno(error_class_codec, codec_error_video_not_support);
     }
-    int ret = decoderHandle->decoder->open(meta, device, decFlag);
+    int ret;
+    if (dstFormat) {
+#ifdef __APPLE__
+        auto *vtbDecoder = dynamic_cast<AFVTBDecoder *>(decoderHandle->decoder.get());
+        if (vtbDecoder) {
+            ret = vtbDecoder->setPixelBufferFormat(dstFormat);
+            if (ret < 0) {
+                AF_LOGW("setPixelBufferFormat error\n");
+            }
+        }
+#endif
+    }
+    ret = decoderHandle->decoder->open(meta, device, decFlag);
     if (ret < 0) {
         AF_LOGE("config decoder error ret= %d \n", ret);
         decoderHandle->decoder = nullptr;

@@ -2905,7 +2905,7 @@ int SuperMediaPlayer::setUpAudioDecoder(const Stream_meta *meta)
         ProcessMuteMsg();
     }
 
-    ret = mAVDeviceManager->setUpDecoder(DECFLAG_SW, meta, nullptr, SMPAVDeviceManager::DEVICE_TYPE_AUDIO);
+    ret = mAVDeviceManager->setUpDecoder(DECFLAG_SW, meta, nullptr, SMPAVDeviceManager::DEVICE_TYPE_AUDIO, 0);
     if (ret < 0) {
         MediaPlayerEventType type = MEDIA_PLAYER_EVENT_AUDIO_DECODER_DEVICE_ERROR;
         if (ret == gen_framework_errno(error_class_codec, codec_error_audio_not_support)) {
@@ -3144,7 +3144,6 @@ int SuperMediaPlayer::CreateVideoDecoder(bool bHW, Stream_meta &meta)
     }
 
     if (mSet->bLowLatency) {
-        // artp disable b frame to reduce delay at present
         decFlag |= DECFLAG_OUTPUT_FRAME_ASAP;
     }
 
@@ -3158,8 +3157,8 @@ int SuperMediaPlayer::CreateVideoDecoder(bool bHW, Stream_meta &meta)
         } else {
             if (mAVDeviceManager->isVideoRenderValid()) {
                 /*
-                 * Get a cached surface, then the mediacodec video decoder can be reuse,
-                 * otherwise the mediacodec video decoder will be recreate on setUpDecoder.
+                 * Get a cached surface, then the mediaCodec video decoder can be reuse,
+                 * otherwise the mediaCodec video decoder will be recreate on setUpDecoder.
                  */
                 view = mAVDeviceManager->getVideoRender()->getSurface(false);
             }
@@ -3171,10 +3170,15 @@ int SuperMediaPlayer::CreateVideoDecoder(bool bHW, Stream_meta &meta)
     }
 
     if (mSet->bLowLatency) {
-        // artp disable b frame to reduce delay at present
         decFlag |= DECFLAG_OUTPUT_FRAME_ASAP;
     }
-    ret = mAVDeviceManager->setUpDecoder(decFlag, (const Stream_meta *) (&meta), view, SMPAVDeviceManager::DEVICE_TYPE_VIDEO);
+    uint32_t dstFormat = 0;
+#ifdef __APPLE__
+    if (mFrameCb && mSet->pixelBufferOutputFormat) {
+        dstFormat = mSet->pixelBufferOutputFormat;
+    }
+#endif
+    ret = mAVDeviceManager->setUpDecoder(decFlag, (const Stream_meta *) (&meta), view, SMPAVDeviceManager::DEVICE_TYPE_VIDEO, dstFormat);
     if (ret < 0) {
         return ret;
     }
@@ -3182,17 +3186,6 @@ int SuperMediaPlayer::CreateVideoDecoder(bool bHW, Stream_meta &meta)
         std::lock_guard<std::mutex> lock(mAppStatusMutex);
         ProcessVideoHoldMsg(mAppStatus == APP_BACKGROUND);
     }
-#ifdef __APPLE__
-//    if (mFrameCb && mSet->pixelBufferOutputFormat) {
-//        auto *vtbDecoder = dynamic_cast<AFVTBDecoder *>(mVideoDecoder.get());
-//        if (vtbDecoder) {
-//            int ret1 = vtbDecoder->setPixelBufferFormat(mSet->pixelBufferOutputFormat);
-//            if (ret1 < 0) {
-//                AF_LOGW("setPixelBufferFormat error\n");
-//            }
-//        }
-//    }
-#endif
     return ret;
 }
 

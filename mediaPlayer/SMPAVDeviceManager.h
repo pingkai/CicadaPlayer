@@ -22,10 +22,11 @@ namespace Cicada {
             bool valid{false};
             uint64_t decFlag;
             void *device;
+            uint32_t mDstFormat{0};
 
-            bool match(const Stream_meta* pMeta,uint64_t flag,void *pDevice)
+            bool match(const Stream_meta *pMeta, uint64_t flag, void *pDevice, uint32_t dstFormat)
             {
-                return (pDevice == device) && (flag == decFlag) && (pMeta->codec == meta.codec);
+                return (pDevice == device) && (flag == decFlag) && (pMeta->codec == meta.codec) && (dstFormat == mDstFormat);
             }
         };
 
@@ -85,7 +86,7 @@ namespace Cicada {
 
         void setAudioRenderingCb(renderingFrameCB cb, void *userData);
 
-        int setUpDecoder(uint64_t decFlag, const Stream_meta *meta, void *device, deviceType type);
+        int setUpDecoder(uint64_t decFlag, const Stream_meta *meta, void *device, deviceType type, uint32_t dstFormat);
 
         uint64_t getVideoDecoderFlags();
 
